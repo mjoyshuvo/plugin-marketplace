@@ -4,5 +4,11 @@
     "name": "Cefalo security team"
   },
   "description": "The only plugin store on Cefalo laptops. Every plugin here passed plugin intake and matches its signed approval.",
-  "plugins": []
+  "plugins": [
+    {
+      "name": "explanatory-output-style",
+      "source": "./plugins/explanatory-output-style",
+      "description": "Adds educational insights about implementation choices and codebase patterns (mimics the deprecated Explanatory output style)"
+    }
+  ]
 }
