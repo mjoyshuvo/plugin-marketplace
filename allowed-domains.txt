@@ -1,0 +1,4 @@
+# Domains a plugin's code or MCP servers may call (plugin intake allowlist).
+# Defaults built into plugin_intake.py: anthropic.com, claude.com, claude.ai, github.com,
+# githubusercontent.com, pypi.org, npmjs.org, npmjs.com, schemastore.org, python.org.
+# Add one domain per line after review.

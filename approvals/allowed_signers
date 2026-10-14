@@ -1,0 +1,8 @@
+# Public keys that may sign plugin approvals (ssh-keygen -Y verify reads this file).
+# One line per key, in this form:
+#
+#   plugin-approval namespaces="cefalo-plugin-approval" ssh-ed25519 AAAA... plugin-approval
+#
+# The matching private key lives only in the GitHub environment secret
+# PLUGIN_APPROVAL_SSH_KEY of the plugin-approval environment.
+# With no key line here, every approval fails verification.
