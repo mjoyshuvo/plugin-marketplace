@@ -1,0 +1,72 @@
+# Submit a plugin from a GitHub URL without a laptop. The job runs main's submit_plugin.py, which
+# copies the plugin into plugins/<name>/ on a new branch, pushes it and opens a PR against main.
+# A push or PR made with GITHUB_TOKEN starts no new runs, so the job then dispatches intake.yml
+# on the new branch.
+#
+# Nothing from the submitted repo runs: the script fetches it with git hooks and submodules off,
+# and only copies and reads its files. A security reviewer still approves it with approve.yml.
+name: submit
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "GitHub URL: https://github.com/<owner>/<repo> or https://github.com/<owner>/<repo>/tree/<ref>/<folder>"
+        required: true
+      plugin:
+        description: "Plugin name, when the source is a marketplace or holds several plugins"
+        required: false
+        default: ""
+      bump:
+        description: "Raise the version when main lists this plugin with the same version"
+        required: false
+        type: choice
+        options: [none, patch, minor, major]
+        default: none
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - name: Check inputs
+        env:
+          SOURCE: ${{ inputs.source }}
+          PLUGIN: ${{ inputs.plugin }}
+          BUMP: ${{ inputs.bump }}
+        run: |
+          re='^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(/tree/[A-Za-z0-9._/-]+)?(\.git)?/?$'
+          [[ "$SOURCE" =~ $re ]] || { echo "source must be a GitHub repo URL"; exit 1; }
+          case "$PLUGIN" in *[!a-z0-9-]*) echo "bad plugin name"; exit 1;; esac
+          case "$BUMP" in none|patch|minor|major) ;; *) echo "bad bump"; exit 1;; esac
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Copy, scan, push the branch and open the PR
+        id: submit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE: ${{ inputs.source }}
+          PLUGIN: ${{ inputs.plugin }}
+          BUMP: ${{ inputs.bump }}
+        run: |
+          git config user.name "plugin-intake-bot"
+          git config user.email "plugin-intake-bot@users.noreply.github.com"
+          args=("$SOURCE")
+          [ -n "$PLUGIN" ] && args+=(--plugin "$PLUGIN")
+          [ "$BUMP" != none ] && args+=(--bump "$BUMP")
+          python3 tools/submit_plugin.py "${args[@]}"
+      - name: Run intake on the new branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.submit.outputs.branch }}
+        run: gh workflow run intake.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
