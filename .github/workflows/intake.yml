@@ -1,0 +1,124 @@
+# Plugin intake gate. Runs on every PR, on every push to main, and when approve.yml
+# dispatches it on a PR branch (a push made with GITHUB_TOKEN starts no new runs).
+#
+# The gate tools, baseline records, allowed_signers and allowed-domains.txt come from main
+# (checked out into trusted/). The code under review is checked out into pr/ and is only read,
+# except by the `test` job, which runs the PR's own unit tests with a read-only token.
+#
+# Make the `intake` and `verify` jobs required status checks on main.
+name: intake
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+          path: pr
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Unit tests (the PR's own tools)
+        working-directory: pr
+        run: python3 -m unittest discover -s tools/tests -t .
+
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+          path: pr
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.295
+      - name: Validate the marketplace and each changed plugin
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          claude plugin validate pr
+          if [ "$EVENT" = push ]; then
+            ls pr/plugins > "$RUNNER_TEMP/changed"
+          else
+            git -C pr diff --name-only origin/main...HEAD -- plugins/ | cut -d/ -f2 | sort -u > "$RUNNER_TEMP/changed"
+          fi
+          while IFS= read -r p; do
+            [ -d "pr/plugins/$p" ] || continue
+            case "$p" in *[!a-z0-9-]*|"") echo "bad plugin folder name: $p"; exit 1;; esac
+            claude plugin validate "pr/plugins/$p" --strict
+          done < "$RUNNER_TEMP/changed"
+
+  intake:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+          path: pr
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Scan changed plugins with main's tools
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          mkdir -p reports
+          if [ "$EVENT" = push ]; then
+            ls pr/plugins > "$RUNNER_TEMP/changed"
+          else
+            git -C pr diff --name-only origin/main...HEAD -- plugins/ | cut -d/ -f2 | sort -u > "$RUNNER_TEMP/changed"
+          fi
+          status=0
+          while IFS= read -r p; do
+            [ -d "pr/plugins/$p" ] || continue
+            case "$p" in *[!a-z0-9-]*|"") echo "bad plugin folder name: $p"; exit 1;; esac
+            python3 trusted/tools/plugin_intake.py scan "pr/plugins/$p" --trusted trusted \
+              --out "reports/$p.json" || status=1
+            python3 trusted/tools/render_report.py "reports/$p.json" --md "reports/$p.md" --html "reports/$p.html"
+            cat "reports/$p.md" >> "$GITHUB_STEP_SUMMARY"
+          done < "$RUNNER_TEMP/changed"
+          exit $status
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: plugin-intake-reports
+          path: reports/
+          if-no-files-found: ignore
+
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+          path: pr
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Marketplace lists only local plugins that match a record signed by main's signers
+        run: python3 trusted/tools/plugin_intake.py verify-marketplace pr --trusted trusted

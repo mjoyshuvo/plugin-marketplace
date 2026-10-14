@@ -1,0 +1,83 @@
+# Approve one plugin on a PR branch. The `plugin-approval` environment holds the job until a
+# required reviewer (the security team) approves it. Only this job sees the signing key.
+#
+# The tool runs from main (trusted/) against the PR copy (pr/), so a PR cannot swap in its own
+# tool while the key is loaded. The job commits approvals/<plugin>.json and its .sig to the
+# branch, then dispatches intake.yml, because a push made with GITHUB_TOKEN starts no new runs.
+name: approve
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "PR branch to approve and commit the record to"
+        required: true
+      plugin:
+        description: "Plugin folder name under plugins/"
+        required: true
+      accept_surface:
+        description: "New hooks / MCP servers / bin files to accept, as kind:item from the scan report, one per line"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  approve:
+    runs-on: ubuntu-latest
+    environment: plugin-approval
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: Check inputs before using them as a ref
+        env:
+          BRANCH: ${{ inputs.branch }}
+          PLUGIN: ${{ inputs.plugin }}
+        run: |
+          case "$BRANCH" in *[!A-Za-z0-9._/-]*|""|main) echo "bad branch name"; exit 1;; esac
+          case "$PLUGIN" in *[!a-z0-9-]*|"") echo "bad plugin name"; exit 1;; esac
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.branch }}
+          path: pr
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Approve, sign and push
+        working-directory: pr
+        env:
+          PLUGIN_APPROVAL_SSH_KEY: ${{ secrets.PLUGIN_APPROVAL_SSH_KEY }}
+          PLUGIN: ${{ inputs.plugin }}
+          BRANCH: ${{ inputs.branch }}
+          ACCEPT: ${{ inputs.accept_surface }}
+          APPROVER: ${{ github.actor }}
+        run: |
+          case "$PLUGIN" in *[!a-z0-9-]*|"") echo "bad plugin name"; exit 1;; esac
+          case "$BRANCH" in *[!A-Za-z0-9._/-]*|""|main) echo "bad branch name"; exit 1;; esac
+          key=$(mktemp)
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$PLUGIN_APPROVAL_SSH_KEY" > "$key"
+          accept=()
+          while IFS= read -r item; do
+            item=${item%$'\r'}
+            [ -n "$item" ] && accept+=(--accept-surface "$item")
+          done <<< "$ACCEPT"
+          python3 ../trusted/tools/plugin_intake.py approve "plugins/$PLUGIN" --trusted ../trusted \
+            --key "$key" --by "$APPROVER" --commit "$(git rev-parse HEAD)" "${accept[@]}"
+          git config user.name "plugin-intake-bot"
+          git config user.email "plugin-intake-bot@users.noreply.github.com"
+          git add "approvals/$PLUGIN.json" "approvals/$PLUGIN.json.sig"
+          git commit -m "Approve $PLUGIN (by $APPROVER)"
+          git push origin "HEAD:$BRANCH"
+      - name: Run intake again on the new head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ inputs.branch }}
+        run: gh workflow run intake.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
