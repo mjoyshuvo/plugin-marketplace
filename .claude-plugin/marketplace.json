@@ -1,0 +1,8 @@
+{
+  "name": "cefalo-marketplace",
+  "owner": {
+    "name": "Cefalo security team"
+  },
+  "description": "The only plugin store on Cefalo laptops. Every plugin here passed plugin intake and matches its signed approval.",
+  "plugins": []
+}
