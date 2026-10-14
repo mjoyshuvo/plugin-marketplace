@@ -6,3 +6,4 @@
 # The matching private key lives only in the GitHub environment secret
 # PLUGIN_APPROVAL_SSH_KEY of the plugin-approval environment.
 # With no key line here, every approval fails verification.
+plugin-approval namespaces="cefalo-plugin-approval" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHYrjpRKuW/Pq4RlS/jzK6BbTVU+IGdoKtAVKpCYuH3Z plugin-approval
