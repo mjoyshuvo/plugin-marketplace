@@ -37,11 +37,11 @@ Every change needs a new approval, also a change of one character. If the change
 
 ## After you submit
 
-CI checks the plugin format and scans the plugin. The scan report is in the summary of the `intake` job, and in the pull request text. If the scan finds a FAIL, fix the plugin and submit again. The `verify` check fails with `no valid signed approval` until a reviewer approves the plugin. That failure is expected. Ask the security team for a review.
+CI checks the plugin format and scans the plugin. The scan report is in the summary of the `security-scan` job, and in the pull request text. If the scan finds a FAIL, fix the plugin and submit again. The `signed-approval` check fails with `no valid signed approval` until a reviewer approves the plugin. That failure is expected. Ask the security team for a review.
 
 ## Approve a plugin (security team)
 
-1. Read the scan report in the summary of the `intake` job. Then read the full diff of the pull request.
+1. Read the scan report in the summary of the `security-scan` job. Then read the full diff of the pull request.
 2. In **Actions > approve > Run workflow**, keep **Use workflow from** set to `main`, and enter:
    - `branch`: the branch of the pull request.
    - `plugin`: the folder name under `plugins/`.
@@ -55,7 +55,7 @@ gh workflow run approve.yml --ref main -f branch=<branch> -f plugin=<name> \
   -f accept_surface="$(printf '%s\n' 'hooks:<item 1>' 'bin:<item 2>')"
 ```
 
-The job scans the plugin again with the tools from `main`, and it stops on any FAIL that is still open. If the scan is clean, the job commits `approvals/<name>.json` and `approvals/<name>.json.sig` to the branch, and it starts the `intake` workflow again. When `verify` passes, approve the pull request as code owner and merge it.
+The job scans the plugin again with the tools from `main`, and it stops on any FAIL that is still open. If the scan is clean, the job commits `approvals/<name>.json` and `approvals/<name>.json.sig` to the branch, and it starts the `checks` workflow again. When `signed-approval` passes, approve the pull request as code owner and merge it.
 
 ## Fix a FAIL from the scan
 
