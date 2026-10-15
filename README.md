@@ -32,21 +32,28 @@ CI runs the tests in `tools/tests/` on every pull request. To run them on your l
 
 ## Set up the repo on GitHub
 
-An admin does these steps once, after the first push of `main`. They change shared GitHub configuration. The final home of the store is `cefalo/cefalo-marketplace`, created as an internal repo.
+An admin does these steps once, after the first push of `main`, in this order. They change shared GitHub configuration. The final home of the store is `cefalo/cefalo-marketplace`, created as an internal repo.
 
-Until the approval key is in `approvals/allowed_signers`, `verify-marketplace` fails for every plugin. The gate fails closed.
+Run every command from the root of a clone of this repo. Use the GitHub web page as a repo admin.
+
+Until the approval key is in `approvals/allowed_signers`, the `signed-approval` check fails for every plugin. The gate fails closed.
 
 ### 1. Create the approval environment
 
-1. In **Settings > Environments**, create the environment `plugin-approval`.
-2. Add the security team as required reviewers, and turn on **Prevent self-review**.
-3. Under **Deployment branches and tags**, allow only `main`.
+The environment must exist before you can store the secret in step 2.
 
-If a reviewer starts `approve.yml` from a pull request branch, GitHub runs that branch's copy of the workflow. The branch rule stops that copy from getting the key.
+1. In **Settings > Environments**, click **New environment**, and name it `plugin-approval`.
+2. Turn on **Required reviewers**, and add the people who approve plugins. Add at least two. The person who starts a run cannot approve it, so with one reviewer, that person can never start a run.
+3. Turn on **Prevent self-review**.
+4. Leave **Allow administrators to bypass configured protection rules** off. If it is on, an admin can get the key with no second person.
+5. Click **Save protection rules**.
+6. Under **Deployment branches and tags**, choose **Selected branches and tags**. Do not choose **Protected branches only**. Click **Add deployment branch or tag rule**, choose **Branch**, and enter `main`.
 
-### 2. Make the approval key
+If a run starts from a pull request branch, GitHub uses that branch's copy of the workflow. The rule in item 6 stops that copy from getting the key.
 
-Do these steps on a trusted laptop, outside the repo. The private key must never go into the repo, a chat, or a ticket.
+### 2. Make the approval key and store it
+
+Do these steps on a trusted laptop. The private key must never go into the repo, a chat, or a ticket.
 
 1. Make an ed25519 key with no passphrase. CI cannot type a passphrase, so the environment protects the key instead.
 
@@ -62,11 +69,21 @@ Do these steps on a trusted laptop, outside the repo. The private key must never
    gh secret set PLUGIN_APPROVAL_SSH_KEY --env plugin-approval -R <owner>/<repo> < ~/plugin-approval
    ```
 
-   You can also paste the full content of `~/plugin-approval` in **Settings > Environments > plugin-approval > Add secret**.
+   If `gh` fails with `HTTP 404`, the environment from step 1 does not exist yet. You can also paste the full content of `~/plugin-approval` in **Settings > Environments > plugin-approval > Add environment secret**.
+
+3. Make sure that GitHub has the secret:
+
+   ```bash
+   gh secret list --env plugin-approval -R <owner>/<repo>
+   ```
+
+   The list must show `PLUGIN_APPROVAL_SSH_KEY`. If the output ends with `(END)`, press `q` to close the viewer.
+
+Keep the key files until step 3 is done. GitHub never shows a secret again, so until then the files are your only copy.
 
 ### 3. Add the public key to `allowed_signers`
 
-1. In a clone of the repo, create a branch:
+1. Create a branch:
 
    ```bash
    git switch -c add-approval-key
@@ -78,7 +95,9 @@ Do these steps on a trusted laptop, outside the repo. The private key must never
    printf 'plugin-approval namespaces="cefalo-plugin-approval" %s\n' "$(cat ~/plugin-approval.pub)" >> approvals/allowed_signers
    ```
 
-3. Make sure that the key pair works. Sign a test file, then verify it against the file you changed:
+   Then look at the last line with `tail -1 approvals/allowed_signers`. It must start with `plugin-approval namespaces="cefalo-plugin-approval" ssh-ed25519` and end with `plugin-approval`.
+
+3. Make sure that the key pair works. Sign a test file, then verify it against the file you changed. Run both commands from the repo root, because the second one uses the path `approvals/allowed_signers`.
 
    ```bash
    echo test > /tmp/t && ssh-keygen -Y sign -f ~/plugin-approval -n cefalo-plugin-approval /tmp/t
@@ -90,22 +109,51 @@ Do these steps on a trusted laptop, outside the repo. The private key must never
 
    The output must start with `Good "cefalo-plugin-approval" signature for plugin-approval`.
 
-4. Delete the private key and the test files from the laptop:
+4. Delete the key files and the test files:
 
    ```bash
    rm ~/plugin-approval ~/plugin-approval.pub /tmp/t /tmp/t.sig
    ```
 
-5. Commit only `approvals/allowed_signers`, and merge it through a pull request.
+5. Commit only `approvals/allowed_signers`, push the branch, and open a pull request:
 
-### 4. Protect `main` and allow the bot
+   ```bash
+   git add approvals/allowed_signers && git commit -m "Add the plugin-approval public key" && git push -u origin add-approval-key && gh pr create --fill --base main
+   ```
 
-1. In **Settings > Branches**, protect `main`:
-   - Require a pull request and a review from code owners.
-   - Require the status checks `security-scan` and `signed-approval`.
-   - Block force pushes, and do not allow bypass.
-2. In **Settings > Actions > General**, turn on **Allow GitHub Actions to create and approve pull requests**. `submit.yml` needs it to open pull requests.
-3. If the security team has a different GitHub team name, replace the reviewers in `.github/CODEOWNERS` with the security team.
+6. Merge the pull request after review.
+
+### 4. Protect `main`
+
+1. In **Settings > Branches**, click **Add classic branch protection rule**, and set **Branch name pattern** to `main`.
+2. Turn on these options:
+   - **Require a pull request before merging**, then **Require review from Code Owners**.
+   - **Require status checks to pass before merging**. Search for and add `security-scan` and `signed-approval`. GitHub can find a check only after it ran once on the repo.
+   - **Do not allow bypassing the above settings**.
+3. Leave **Allow force pushes** and **Allow deletions** off, and click **Create**.
+
+GitHub does not let the author of a pull request approve it. A pull request that you open needs a review from another code owner. The `gh` login decides who the author is, not the git commit author.
+
+### 5. Allow the bot to open pull requests
+
+In **Settings > Actions > General > Workflow permissions**, turn on **Allow GitHub Actions to create and approve pull requests**, and click **Save**. Without it, `submit.yml` pushes the branch and then fails with `GitHub Actions is not permitted to create or approve pull requests`. To submit again after that error, first delete the branch it pushed: `git push origin --delete add-<name>`.
+
+### 6. Name the reviewers
+
+Put the reviewers in `.github/CODEOWNERS`. In the final Cefalo repo, use the security team.
+
+## The checks on a pull request
+
+The `checks` workflow (`.github/workflows/checks.yml`) runs four jobs. GitHub shows each one as `checks / <job>`.
+
+| Check | What it checks | Required to merge |
+|---|---|---|
+| `unit-tests` | The tests of the gate tools in `tools/tests/` | No |
+| `plugin-format` | The plugin format, with `claude plugin validate` | No |
+| `security-scan` | The scan of each changed plugin. The report is in the job summary. | Yes |
+| `signed-approval` | The signed record of each listed plugin, and the hash of every plugin file | Yes |
+
+Before a reviewer approves a new or changed plugin, `signed-approval` fails with `<name>: no valid signed approval`. That failure is expected. The approve job fixes it. Every other check must pass.
 
 ## Replace the approval key
 
@@ -119,4 +167,6 @@ Replace the key when the repo moves to `cefalo/cefalo-marketplace`, when a perso
 
 The gate always runs `tools/plugin_intake.py` from `main`, never from the pull request. It also reads the approval key, the allowed domains, and the last approval from `main`. A pull request therefore cannot weaken the checks that judge it. A pull request can still change `.github/workflows/checks.yml` for its own run, so the code owner review of every path stays required.
 
-The approval record `approvals/<name>.json` lists the hash of every plugin file and everything in the plugin that can run on a laptop: hooks, MCP servers, and `bin/` files. The approve job signs the whole record with an SSH key that only the `plugin-approval` environment holds. `verify-marketplace` needs only the public key. A change to one byte of a plugin, or to its record, fails the `signed-approval` check until a reviewer approves the plugin again.
+The approval record `approvals/<name>.json` lists the hash of every plugin file and everything in the plugin that can run on a laptop: hooks, MCP servers, and `bin/` files. The approve job signs the whole record with an SSH key that only the `plugin-approval` environment holds. The `signed-approval` check needs only the public key. A change to one byte of a plugin, or to its record, fails the `signed-approval` check until a reviewer approves the plugin again.
+
+A diagram of the flow from pull request to merge, and of how the key and the `signed-approval` check work, is in [docs/approval-flow.html](docs/approval-flow.html). Open it in a browser.

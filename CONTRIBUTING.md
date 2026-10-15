@@ -41,12 +41,26 @@ CI checks the plugin format and scans the plugin. The scan report is in the summ
 
 ## Approve a plugin (security team)
 
-1. Read the scan report in the summary of the `security-scan` job. Then read the full diff of the pull request.
-2. In **Actions > approve > Run workflow**, keep **Use workflow from** set to `main`, and enter:
+A plugin needs two separate approvals, in this order. The job approval lets the approve job read the key and sign the record. The pull request approval is the code owner review that unlocks the merge. Approving the pull request does not start the job or release the key.
+
+The person who starts the approve job cannot approve it, because the `plugin-approval` environment has **Prevent self-review** on. One reviewer starts the job, and another approves it.
+
+1. Read the scan report in the summary of the `security-scan` job. Then read the full diff of the pull request. Before approval, all checks pass except `signed-approval`, which fails with `no valid signed approval`.
+2. Start the approve job. In **Actions > approve > Run workflow**, keep **Use workflow from** set to `main`, and enter:
    - `branch`: the branch of the pull request.
    - `plugin`: the folder name under `plugins/`.
-   - `accept_surface`: each new hook, MCP server, or `bin/` file that you accept. Copy the item exactly as the scan report quotes it after `New:`, for example `hooks:SessionStart [*] echo hello`. Leave it empty when the plugin adds none.
-3. Approve the job when GitHub asks for a review in the `plugin-approval` environment.
+   - `accept_surface`: each new hook, MCP server, or `bin/` file that you accept. Copy the item exactly as the scan report quotes it after `New:`, for example `hooks:SessionStart [*] echo hello`. Leave it empty for a first intake and when the update adds none.
+
+   You can also start it with the GitHub CLI:
+
+   ```
+   gh workflow run approve.yml -R <owner>/<repo> --ref main -f branch=<branch> -f plugin=<name>
+   ```
+
+3. A second reviewer opens the run in **Actions > approve**, clicks **Review deployments**, ticks `plugin-approval`, and clicks **Approve and deploy**. Before approving, make sure that the run started from `main` and that `branch` and `plugin` match the pull request.
+4. The job scans the plugin again with the tools from `main`, and it stops on any FAIL that is still open. If the scan is clean, it commits `approvals/<name>.json` and `approvals/<name>.json.sig` to the branch, and it starts the `checks` workflow again.
+5. On the pull request, GitHub shows **1 workflow awaiting approval**, because the bot pushed the last commit. Click **Approve workflows to run**. The checks run again, and `signed-approval` must now pass.
+6. A code owner who did not open the pull request approves it under **Files changed > Review changes**. Then merge it.
 
 The input box in the GitHub web page takes one line. To accept more than one item, start the job with the GitHub CLI and put one item on each line:
 
@@ -54,8 +68,6 @@ The input box in the GitHub web page takes one line. To accept more than one ite
 gh workflow run approve.yml --ref main -f branch=<branch> -f plugin=<name> \
   -f accept_surface="$(printf '%s\n' 'hooks:<item 1>' 'bin:<item 2>')"
 ```
-
-The job scans the plugin again with the tools from `main`, and it stops on any FAIL that is still open. If the scan is clean, the job commits `approvals/<name>.json` and `approvals/<name>.json.sig` to the branch, and it starts the `checks` workflow again. When `signed-approval` passes, approve the pull request as code owner and merge it.
 
 ## Fix a FAIL from the scan
 
