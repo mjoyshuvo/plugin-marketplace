@@ -147,7 +147,7 @@ def locate(top, start, name):
             raise SubmitError(
                 f"{name} lives in another repo ({json.dumps(src)}). Submit that repo directly."
             )
-        return inside(top, os.path.join(os.path.relpath(start, top), src)), entry
+        return inside(top, os.path.join(os.path.relpath(start, os.path.realpath(top)), src)), entry
     if os.path.isfile(os.path.join(start, MANIFEST)):
         return start, None
     roots = {}
