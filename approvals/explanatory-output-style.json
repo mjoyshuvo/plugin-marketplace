@@ -1,0 +1,25 @@
+{
+  "accepted_surface": [],
+  "approved_at": "2026-10-15T04:20:08+00:00",
+  "approved_by": "shuvo-cefalo",
+  "commit": "1695e17632bb465a8beba488ccdb3891624dc488",
+  "files": {
+    ".claude-plugin/plugin.json": "cad0bd812d3fca8c90d10e13f9fdc8c73c2120c43edfc0e152e04e35e99ca86d",
+    "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "README.md": "543754079554d2c58b72322edebcf09775a5fe74eafe1f5102c496388ab4aa82",
+    "hooks-handlers/session-start.sh": "58efe97b7f5ccd384e0ee12a2f3dd2e75a38df35841a1b27ea6d9eb833c28912",
+    "hooks/hooks.json": "f941cedcbac07688675fb8d0fad741e9ba13900d73416409861001efe3fedba9"
+  },
+  "name": "explanatory-output-style",
+  "open_warnings": 3,
+  "schema": 1,
+  "surface": {
+    "bin": [],
+    "hooks": [
+      "SessionStart [*] bash \"${CLAUDE_PLUGIN_ROOT}/hooks-handlers/session-start.sh\""
+    ],
+    "mcp": []
+  },
+  "tree_hash": "16dcbfdb4017ac1e53b17aca3365fb65dca6e7292eb67baab810b1e114b9ed29",
+  "version": "1.0.0"
+}
