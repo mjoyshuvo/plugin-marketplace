@@ -3,7 +3,7 @@
 #
 # The tool runs from main (trusted/) against the PR copy (pr/), so a PR cannot swap in its own
 # tool while the key is loaded. The job commits approvals/<plugin>.json and its .sig to the
-# branch, then dispatches intake.yml, because a push made with GITHUB_TOKEN starts no new runs.
+# branch, then dispatches checks.yml, because a push made with GITHUB_TOKEN starts no new runs.
 name: approve
 
 on:
@@ -80,4 +80,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ inputs.branch }}
-        run: gh workflow run intake.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
+        run: gh workflow run checks.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"

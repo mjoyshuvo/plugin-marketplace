@@ -102,7 +102,7 @@ Do these steps on a trusted laptop, outside the repo. The private key must never
 
 1. In **Settings > Branches**, protect `main`:
    - Require a pull request and a review from code owners.
-   - Require the status checks `intake` and `verify`.
+   - Require the status checks `security-scan` and `signed-approval`.
    - Block force pushes, and do not allow bypass.
 2. In **Settings > Actions > General**, turn on **Allow GitHub Actions to create and approve pull requests**. `submit.yml` needs it to open pull requests.
 3. If the security team has a different GitHub team name, replace the reviewers in `.github/CODEOWNERS` with the security team.
@@ -113,10 +113,10 @@ Replace the key when the repo moves to `cefalo/cefalo-marketplace`, when a perso
 
 1. Make a new key and store it as the secret, as in [step 2](#2-make-the-approval-key). The new secret replaces the old one.
 2. In one pull request, delete the old line from `approvals/allowed_signers` and add the new one, as in [step 3](#3-add-the-public-key-to-allowed_signers).
-3. After the merge, every record signed with the old key fails `verify`. Run `approve.yml` again for each plugin. See "Approve a plugin" in [CONTRIBUTING.md](CONTRIBUTING.md).
+3. After the merge, every record signed with the old key fails the `signed-approval` check. Run `approve.yml` again for each plugin. See "Approve a plugin" in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## How the gate protects the store
 
-The gate always runs `tools/plugin_intake.py` from `main`, never from the pull request. It also reads the approval key, the allowed domains, and the last approval from `main`. A pull request therefore cannot weaken the checks that judge it. A pull request can still change `.github/workflows/intake.yml` for its own run, so the code owner review of every path stays required.
+The gate always runs `tools/plugin_intake.py` from `main`, never from the pull request. It also reads the approval key, the allowed domains, and the last approval from `main`. A pull request therefore cannot weaken the checks that judge it. A pull request can still change `.github/workflows/checks.yml` for its own run, so the code owner review of every path stays required.
 
-The approval record `approvals/<name>.json` lists the hash of every plugin file and everything in the plugin that can run on a laptop: hooks, MCP servers, and `bin/` files. The approve job signs the whole record with an SSH key that only the `plugin-approval` environment holds. `verify-marketplace` needs only the public key. A change to one byte of a plugin, or to its record, fails the `verify` check until a reviewer approves the plugin again.
+The approval record `approvals/<name>.json` lists the hash of every plugin file and everything in the plugin that can run on a laptop: hooks, MCP servers, and `bin/` files. The approve job signs the whole record with an SSH key that only the `plugin-approval` environment holds. `verify-marketplace` needs only the public key. A change to one byte of a plugin, or to its record, fails the `signed-approval` check until a reviewer approves the plugin again.
