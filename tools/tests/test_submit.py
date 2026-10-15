@@ -126,6 +126,7 @@ class Submit(unittest.TestCase):
             self.store,
             ignore=shutil.ignore_patterns(".git", ".claude", "__pycache__", "reports"),
         )
+        self.empty_the_store()
         self.remote = os.path.join(self.tmp, "remote.git")
         git(self.tmp, "init", "-q", "--bare", "-b", "main", self.remote)
         git(self.store, "init", "-q", "-b", "main")
@@ -134,6 +135,22 @@ class Submit(unittest.TestCase):
         git(self.store, "remote", "add", "origin", self.remote)
         git(self.store, "push", "-q", "-u", "origin", "main")
         self.script = os.path.join(self.store, "tools", "submit_plugin.py")
+
+    def empty_the_store(self):
+        """The real store lists plugins over time; these tests start from an empty one."""
+        shutil.rmtree(os.path.join(self.store, "plugins"))
+        os.makedirs(os.path.join(self.store, "plugins"))
+        open(os.path.join(self.store, "plugins", ".gitkeep"), "w").close()
+        approvals = os.path.join(self.store, "approvals")
+        for f in os.listdir(approvals):
+            if f.endswith((".json", ".json.sig")):
+                os.remove(os.path.join(approvals, f))
+        mp_path = os.path.join(self.store, ".claude-plugin", "marketplace.json")
+        with open(mp_path) as fh:
+            mp = json.load(fh)
+        mp["plugins"] = []
+        with open(mp_path, "w") as fh:
+            fh.write(json.dumps(mp, indent=2) + "\n")
 
     def source(self, files, name="src"):
         path = os.path.join(self.tmp, name)
@@ -290,6 +307,18 @@ class Submit(unittest.TestCase):
         proc = self.submit(src, "--dry-run", "--plugin", "alpha")
         self.assertOk(proc)
         self.assertIn('"description": "From the entry."', proc.stdout)
+
+    def test_marketplace_with_plugin_at_its_root_through_a_symlinked_path(self):
+        mp = {"name": "theirs", "plugins": [{"name": "rooted", "source": "./"}]}
+        src = self.source(
+            {".claude-plugin/marketplace.json": json.dumps(mp), **plugin_files("rooted")},
+            "deep/er/src",
+        )
+        os.symlink(os.path.join(self.tmp, "deep", "er"), os.path.join(self.tmp, "alias"))
+        top = os.path.join(self.tmp, "alias", "src")
+        root, entry = sp.locate(top, sp.inside(top, "."), "rooted")
+        self.assertEqual(root, os.path.realpath(src))
+        self.assertEqual(entry["name"], "rooted")
 
     def test_bad_name_and_missing_version_rejected(self):
         bad = self.source({".claude-plugin/plugin.json": manifest("Hello_World")}, "bad")
